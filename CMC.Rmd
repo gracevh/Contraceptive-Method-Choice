@@ -1,0 +1,144 @@
+---
+title: "Contraceptive Method Choice"
+author: "Grace Van Hyfte"
+date: "`r Sys.Date()`"
+output: html_document
+runtime: shiny        
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+This report concerns a survey conducted in 1987 by the National Family Planning Coordinating Board and the Central Bureau of Statistics: the National Indonesia Contraceptive Prevalence Survey (NICPS). The survey was intended to collect data on 'fertility, family planning, maternal and child health'. The current analysis is based on a subset of the original data. 
+
+## The Data
+Some important codings:
+
+* `Age` : years
+* `Edu` : Woman’s education level (1=none, 2=some primary, 3=complete primary, 4=secondary or higher 
+* `EduH` : Husband's education level (1=none, 2=some primary, 3=complete primary, 4=secondary or higher 
+* `Child` = Number of children the woman has had in her lifetime
+* `Religion` = Woman’s religious faith (0=Non-Islamic, 1=Islamic)
+* `Work` = Woman’s current work status (0=Working, 1=Not working)
+* `OccuH` = Husband’s Occupation level (undocumented integer range of 1-4)
+* `SLI` = Standard of Living Index ranging ambiguously from 1(low)-4(high)
+* `Media` = Woman’s media exposure (assumable to contraceptive use) (0=Good, 1=Not good)
+* `Use` = Contraceptive method used (0=no contraceptive use, 1= either short- or long-term use)
+</br>
+</br>
+**Note:** short-term use and long-term use were combined to make the dataset binary
+
+First let's take a look at the raw data:
+```{r, echo=F}
+cmc = read.csv("cmc.csv")
+```
+
+```{r, echo=F}
+#numericInput('n', "Specify number of observations:", 5)
+
+#renderTable({head(cmc, input$n)
+#  })
+```
+
+We can summarise the data:
+```{r}
+head(cmc)
+summary(cmc)
+```
+It's noted that many of the variables in the data set are categorical (factors). Let's convert them to factors so they can be summarised appropriately. Let's also remove the observation variable X.
+```{r}
+# Define the labels for graphical purposes 
+cmc$Edu = factor(cmc$Edu, levels = c('1','2','3','4'), labels = c("none","%prime","prime","second+"))
+cmc$EduH = factor(cmc$EduH, levels = c('1','2','3','4'), labels = c("none","%prime","prime","second+"))
+cmc$Religion = factor(cmc$Religion, levels = c('0','1'), labels = c('nonIsl','Islamic'))
+cmc$Work = factor(cmc$Work, levels = c('0','1'), labels = c('Yes', 'No'))
+cmc$Media = factor(cmc$Media, levels = c('0','1'), labels = c('Positive', 'Negative'))
+cmc$Use = factor(cmc$Use, levels = c('0','1'), labels = c('No', 'Yes'))
+vars = c("SLI", "OccuH")
+cmc[,vars] = lapply(cmc[,vars], factor)
+sum(is.na.data.frame(cmc))
+# Remove the X variable
+cmc = cmc[-c(1)]
+# summarise and check
+summary(cmc)
+
+```
+There! Now the data is ready for some processing! 
+</br>
+</br>
+Let's create some descriptive plots...
+```{r, echo=F, fig.show="hold", fig.cap="Here are some doughnut charts displaying proportional information from the data. Notice that there is decent balance in the data for those who do and do not use contraception. The majority of survey participants are of the Islamic faith and had positive exposure to contraceptive use via the media."}
+
+```
+```{r, echo=T, message=F, warning=F, fig.align="center", fig.cap="From the graph it can be seen that a majority of the husbands in the sample have higher education. Only 10% of the women in the survey have no education."}
+library(ggplot2)
+library(reshape) # for melt()
+wifeprop = prop.table(table(cmc$Edu))
+husbprop = prop.table(table(cmc$EduH))
+n = names(wifeprop) # get names
+m = matrix(rbind(wifeprop, husbprop),ncol=4) # create a data matrix
+rownames(m) = c('Female', 'Male') ; colnames(m) = c(n) ; m  # rename rows and columns
+new.m = melt(t(m), id=c('Female', 'Male')) # convert sex variables to observations
+df = data.frame(new.m)
+df = df[c(2,1,3)] # reorder the df
+colnames(df)=c('Sex','Education','Prop') # name the columns
+df$Education = factor(df$Education, levels = c('none','%prime','prime','second+')) # order factor levels
+
+ggplot(df, aes(Education, Prop, fill=Sex)) +
+ geom_bar(stat = "identity", position = 'dodge') + 
+ ylab("Proportion") +
+ geom_text(aes(label = round(Prop, 2)), 
+            position = position_dodge(0.9)) +
+ ggtitle("Side-by-Side Bar Chart of Education Level by Sex")
+
+```
+
+```{r, echo=T, message=F, warning=F, fig.align='center', fig.cap="It is not the prettiest, but here is a mosaic plot displaying the education levels between the women surveyed and their husbands."}
+library(vcd)
+
+edu = xtabs(~Edu + EduH, cmc); edu
+per = round(prop.table(edu),2); per # we can calculate percentages to add to the plot
+mosaic(edu, pop = FALSE, main = "Marriage Structure by Education", 
+       labeling = labeling_border(rot_labels = c(45, -45, 0, 0), 
+       abbreviate_labs = c(3, 1, 6)))
+labeling_cells(text = per, margin=0)(edu)
+
+```
+```{r, echo=T, warning=F,tidy=T, message=F, fig.show = "hold", out.width="50%", fig.cap="Notice that in the histogram the sample appears to be similarly distributed despite use case, with . Side-by-side violin plots of the same variables with inset boxplots show that the range of ages for non-use is wider than for those who do use contraception."}
+library(ggplot2)
+ggplot(cmc, aes(x=Age, fill=Use)) +
+  geom_histogram(color='chocolate') +
+  ggtitle('Histogram of Contraceptive Use by Age') +
+  theme_minimal() 
+
+ggplot(cmc, aes(x=Use, y=Age, fill=Use)) +
+  geom_violin(scale='count', trim = F) +
+  geom_boxplot(fill='darkred', width=0.1) +
+  geom_point(position = 'jitter', size=0.5) +
+  stat_summary(geom = 'point', fun = mean, shape=23, size=3) +
+  ggtitle('Violin Plot of Contraceptive Use by Age with Inset Boxplot and Mean') +
+  theme_minimal()
+
+```
+
+```{r, echo=T, fig.align='center', fig.show = "hold", out.width="50%", fig.cap="Pairwise scatterplots, with jitter, to highlight the density of observations, with the majority having 5 or fewer children and a survey average of 3. *Jitter was used due to the discrete nature of the x-axis, many data points were overlapping."}
+avg = round(mean(cmc$Child),0) ; avg
+ggplot(cmc, aes(x=Child, y=..density..)) +
+  geom_histogram(color='black', fill='goldenrod1', bins = 20, binwidth = 1) +
+  geom_vline(aes(xintercept=avg), linetype='dashed', size=1) +
+  ggtitle('Distribution of Children') +
+  theme_minimal()
+
+ggplot(cmc, aes(x=Age, y=Child, fill=Use)) +
+  geom_point(shape=21, position = 'jitter') +
+  ggtitle('Scatterplot of Age v. Child by Contraceptive Use') +
+  facet_grid(. ~ Use)
+
+```
+```{r, }
+
+
+```
